@@ -191,6 +191,49 @@ wemp 支持两种工作模式：
 | 客服模式 | `wemp-cs` | 未配对用户，功能受限 |
 | 个人助理模式 | `main` | 已配对用户，完整功能 |
 
+### 配置双 Agent
+
+要使用双 Agent 模式，需要在 OpenClaw/Clawdbot 中配置两个 Agent：
+
+#### 1. 创建客服 Agent（wemp-cs）
+
+编辑 `~/.openclaw/openclaw.json`（或 `~/.clawdbot/clawdbot.json`）：
+
+```json
+{
+  "agents": {
+    "wemp-cs": {
+      "name": "微信客服",
+      "model": "claude-3-5-sonnet-20241022",
+      "systemPrompt": "你是一个微信公众号客服助手。请简洁友好地回答用户问题。\n\n注意：\n- 你的功能有所限制，无法执行复杂任务\n- 如果用户需要更多功能，请提示他们发送「配对」绑定账号",
+      "tools": []
+    },
+    "main": {
+      "name": "个人助理",
+      "model": "claude-3-5-sonnet-20241022",
+      "systemPrompt": "你是用户的个人 AI 助理，可以帮助用户完成各种任务。",
+      "tools": ["*"]
+    }
+  }
+}
+```
+
+#### 2. Agent 配置说明
+
+| Agent | 用途 | 建议配置 |
+|-------|------|----------|
+| `wemp-cs` | 客服模式，面向未配对的公众用户 | 限制工具使用，简洁回复 |
+| `main` | 个人助理，面向已配对的授权用户 | 完整工具权限 |
+
+#### 3. 自定义 Agent ID
+
+如果你想使用不同的 Agent ID，可以通过环境变量配置：
+
+```bash
+export WEMP_AGENT_PAIRED=my-assistant      # 已配对用户使用的 Agent
+export WEMP_AGENT_UNPAIRED=my-customer-service  # 未配对用户使用的 Agent
+```
+
 ### 用户命令
 
 在微信公众号中发送以下命令：
