@@ -5,8 +5,85 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ResolvedWechatMpAccount, WechatMpMessage, WechatMpChannelConfig } from "./types.js";
 import { verifySignature, processWechatMessage } from "./crypto.js";
-import { sendTypingStatus, sendCustomMessage } from "./api.js";
+import { sendTypingStatus, sendCustomMessage, sendImageByUrl, downloadImageAsDataUrl } from "./api.js";
 import { getWechatMpRuntime } from "./runtime.js";
+
+// 匹配文本中的图片 URL（支持 markdown 格式和纯 URL）
+const IMAGE_URL_PATTERNS = [
+  /!\[.*?\]\((https?:\/\/[^\s)]+\.(?:png|jpg|jpeg|gif|webp)(?:\?[^\s)]*)?)\)/gi, // ![alt](url)
+  /(?<!\()(https?:\/\/[^\s<>"']+\.(?:png|jpg|jpeg|gif|webp)(?:\?[^\s<>"']*)?)(?!\))/gi, // 纯 URL
+];
+
+// 已知的图片服务域名（这些服务的 URL 可能没有扩展名）
+const KNOWN_IMAGE_HOSTS = [
+  "picsum.photos",
+  "unsplash.com",
+  "images.unsplash.com",
+  "source.unsplash.com",
+  "placekitten.com",
+  "placehold.co",
+  "placeholder.com",
+];
+
+/**
+ * 从文本中提取图片 URL
+ */
+function extractImageUrls(text: string): string[] {
+  const urls = new Set<string>();
+
+  // 1. 匹配带扩展名的图片 URL
+  for (const pattern of IMAGE_URL_PATTERNS) {
+    const matches = text.matchAll(pattern);
+    for (const match of matches) {
+      const url = match[1] || match[0];
+      if (url) urls.add(url);
+    }
+  }
+
+  // 2. 匹配已知图片服务的 URL（可能没有扩展名）
+  const urlPattern = /https?:\/\/[^\s<>"')\]]+/gi;
+  const allUrls = text.matchAll(urlPattern);
+  for (const match of allUrls) {
+    const url = match[0];
+    try {
+      const hostname = new URL(url).hostname;
+      if (KNOWN_IMAGE_HOSTS.some(host => hostname === host || hostname.endsWith(`.${host}`))) {
+        urls.add(url);
+      }
+    } catch {
+      // 无效 URL，忽略
+    }
+  }
+
+  return Array.from(urls);
+}
+
+/**
+ * 转义正则表达式特殊字符
+ */
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * 处理文本中的图片，提取并移除图片 URL
+ */
+function processImagesInText(text: string): { text: string; imageUrls: string[] } {
+  let processedText = text;
+  const imageUrls = extractImageUrls(text);
+
+  // 从文本中移除已提取的图片 URL（包括 markdown 格式）
+  for (const url of imageUrls) {
+    processedText = processedText
+      .replace(new RegExp(`!\\[.*?\\]\\(${escapeRegExp(url)}\\)`, "g"), "")
+      .replace(new RegExp(escapeRegExp(url), "g"), "");
+  }
+
+  // 清理多余的空行
+  processedText = processedText.replace(/\n{3,}/g, "\n\n").trim();
+
+  return { text: processedText, imageUrls };
+}
 import {
   isPaired,
   getPairedUser,
@@ -16,6 +93,9 @@ import {
   getPairingApiToken,
   setPairingApiToken,
 } from "./pairing.js";
+
+// 存储配置引用
+let storedConfig: any = null;
 
 // Agent ID 配置（默认值，可被配置文件覆盖）
 let agentIdPaired = process.env.WEMP_AGENT_PAIRED || "main";
@@ -37,6 +117,13 @@ export function initPairingConfig(cfg: WechatMpChannelConfig): void {
   console.log(`[wemp] 配对配置: agentPaired=${agentIdPaired}, agentUnpaired=${agentIdUnpaired}`);
 }
 
+/**
+ * 设置配置引用
+ */
+export function setStoredConfig(cfg: any): void {
+  storedConfig = cfg;
+}
+
 // 注册的 webhook 目标
 const webhookTargets = new Map<string, {
   account: ResolvedWechatMpAccount;
@@ -45,6 +132,11 @@ const webhookTargets = new Map<string, {
 
 // 处理中的消息（防重复）
 const processingMessages = new Set<string>();
+
+// 待处理的图片（用户发送图片后等待说明）
+// key: accountId:openId, value: { dataUrl, timestamp }
+const pendingImages = new Map<string, { dataUrl: string; timestamp: number }>();
+const PENDING_IMAGE_TIMEOUT = 5 * 60 * 1000; // 5 分钟过期
 
 /**
  * 注册 Webhook 目标
@@ -245,53 +337,359 @@ async function handleMessage(
     const agentId = paired ? agentIdPaired : agentIdUnpaired;
     console.log(`[wemp:${account.accountId}] 用户 ${openId} 使用 agent: ${agentId} (${paired ? "已配对" : "未配对"})`);
 
-    // 构建 inbound 消息
-    const inbound = {
-      channel: "wemp" as const,
-      accountId: account.accountId,
-      chatType: "direct" as const,
-      chatId: openId,
-      messageId: msg.msgId ?? `${msg.createTime}`,
-      authorId: openId,
-      authorName: openId,
-      text: msg.content,
-      timestamp: parseInt(msg.createTime) * 1000 || Date.now(),
-      raw: msg,
-      // 指定 agent ID
-      agentId,
-    };
+    // 检查是否有待处理的图片
+    const pendingKey = `${account.accountId}:${openId}`;
+    const pendingImage = pendingImages.get(pendingKey);
+    let imageDataUrl: string | undefined;
 
-    // 调用 runtime 处理消息
-    await runtime.handleInbound(inbound);
+    if (pendingImage) {
+      // 检查图片是否过期
+      if (Date.now() - pendingImage.timestamp < PENDING_IMAGE_TIMEOUT) {
+        imageDataUrl = pendingImage.dataUrl;
+        console.log(`[wemp:${account.accountId}] 用户 ${openId} 有待处理图片`);
+      }
+      // 无论是否过期，都清除待处理图片
+      pendingImages.delete(pendingKey);
+    }
+
+    // 使用 dispatchReplyFromConfig 处理消息
+    await dispatchWempMessage({
+      account,
+      openId,
+      text: msg.content,
+      messageId: msg.msgId ?? `${msg.createTime}`,
+      timestamp: parseInt(msg.createTime) * 1000 || Date.now(),
+      agentId,
+      cfg: storedConfig || cfg,
+      runtime,
+      imageDataUrl,
+    });
     return;
   }
 
-  // 其他消息类型
-  if (msg.msgType === "image" || msg.msgType === "voice" || msg.msgType === "video") {
-    // 语音消息如果有识别结果，当作文本处理
-    if (msg.msgType === "voice" && msg.recognition) {
-      const paired = isPaired(account.accountId, openId);
-      const agentId = paired ? agentIdPaired : agentIdUnpaired;
-
-      const inbound = {
-        channel: "wemp" as const,
-        accountId: account.accountId,
-        chatType: "direct" as const,
-        chatId: openId,
-        messageId: msg.msgId ?? `${msg.createTime}`,
-        authorId: openId,
-        authorName: openId,
-        text: msg.recognition,
-        timestamp: parseInt(msg.createTime) * 1000 || Date.now(),
-        raw: msg,
-        agentId,
-      };
-      await runtime.handleInbound(inbound);
+  // 处理图片消息
+  if (msg.msgType === "image" && msg.picUrl) {
+    // 下载图片并转换为 data URL
+    const downloadResult = await downloadImageAsDataUrl(msg.picUrl);
+    if (!downloadResult.success || !downloadResult.dataUrl) {
+      console.error(`[wemp:${account.accountId}] 下载图片失败: ${downloadResult.error}`);
+      await sendCustomMessage(account, openId, "抱歉，图片下载失败，请重新发送。");
       return;
     }
 
-    // 暂不支持的消息类型
+    // 保存图片 data URL，等待用户发送说明
+    const pendingKey = `${account.accountId}:${openId}`;
+    pendingImages.set(pendingKey, {
+      dataUrl: downloadResult.dataUrl,
+      timestamp: Date.now(),
+    });
+
+    // 提示用户说明图片用途
+    await sendCustomMessage(
+      account,
+      openId,
+      "收到图片，请问你想让我做什么？\n\n" +
+        "例如：\n" +
+        "- 识别图片内容\n" +
+        "- 翻译图片中的文字\n" +
+        "- 提取图片中的信息\n\n" +
+        "请发送文字说明你的需求（5 分钟内有效）。"
+    );
+    return;
+  }
+
+  // 处理语音消息
+  if (msg.msgType === "voice" && msg.recognition) {
+    sendTypingStatus(account, openId).catch(() => {});
+
+    const paired = isPaired(account.accountId, openId);
+    const agentId = paired ? agentIdPaired : agentIdUnpaired;
+    console.log(`[wemp:${account.accountId}] 用户 ${openId} 发送语音(识别), 使用 agent: ${agentId} (${paired ? "已配对" : "未配对"})`);
+
+    await dispatchWempMessage({
+      account,
+      openId,
+      text: msg.recognition,
+      messageId: msg.msgId ?? `${msg.createTime}`,
+      timestamp: parseInt(msg.createTime) * 1000 || Date.now(),
+      agentId,
+      cfg: storedConfig || cfg,
+      runtime,
+    });
+    return;
+  }
+
+  // 暂不支持的消息类型
+  if (msg.msgType === "voice" || msg.msgType === "video") {
     console.log(`[wemp:${account.accountId}] 暂不支持的消息类型: ${msg.msgType}`);
+  }
+}
+
+/**
+ * 使用 runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher 分发消息并获取 AI 回复
+ * 参考 LINE 插件的完整实现
+ */
+async function dispatchWempMessage(params: {
+  account: ResolvedWechatMpAccount;
+  openId: string;
+  text: string;
+  messageId: string;
+  timestamp: number;
+  agentId: string;
+  cfg: any;
+  runtime: any;
+  imageDataUrl?: string;
+}): Promise<void> {
+  const { account, openId, text, messageId, timestamp, cfg, runtime, imageDataUrl } = params;
+
+  // 从 runtime 获取需要的函数
+  const dispatchReplyWithBufferedBlockDispatcher = runtime.channel?.reply?.dispatchReplyWithBufferedBlockDispatcher;
+  const finalizeInboundContext = runtime.channel?.reply?.finalizeInboundContext;
+  const resolveAgentRoute = runtime.channel?.routing?.resolveAgentRoute;
+  const formatInboundEnvelope = runtime.channel?.reply?.formatInboundEnvelope;
+  const resolveEnvelopeFormatOptions = runtime.channel?.reply?.resolveEnvelopeFormatOptions;
+  const recordChannelActivity = runtime.channel?.activity?.record;
+  const chunkMarkdownText = runtime.channel?.text?.chunkMarkdownText;
+  const recordSessionMetaFromInbound = runtime.channel?.session?.recordSessionMetaFromInbound;
+  const resolveStorePath = runtime.channel?.session?.resolveStorePath;
+  const updateLastRoute = runtime.channel?.session?.updateLastRoute;
+
+  if (!dispatchReplyWithBufferedBlockDispatcher) {
+    console.error(`[wemp:${account.accountId}] dispatchReplyWithBufferedBlockDispatcher not available in runtime`);
+    return;
+  }
+
+  // 1. 记录渠道活动
+  try {
+    recordChannelActivity?.({
+      channel: "wemp",
+      accountId: account.accountId,
+      direction: "inbound",
+    });
+  } catch (err) {
+    console.warn(`[wemp:${account.accountId}] recordChannelActivity failed:`, err);
+  }
+
+  // 2. 解析路由 - 但保留我们基于配对状态的 agentId
+  const agentId = params.agentId; // 保留传入的 agentId（基于配对状态）
+
+  // 构建 sessionKey - 包含 agentId 以区分不同 agent 的会话
+  let sessionKey = `wemp:${agentId}:${account.accountId}:${openId}`;
+  let mainSessionKey = `wemp:${account.accountId}:${openId}`;
+
+  // 尝试使用 resolveAgentRoute 获取更多路由信息，但不覆盖 agentId
+  if (resolveAgentRoute) {
+    try {
+      const route = resolveAgentRoute({
+        cfg,
+        channel: "wemp",
+        accountId: account.accountId,
+        peer: {
+          kind: "dm",
+          id: openId,
+        },
+      });
+      // 只使用 route 的 mainSessionKey 格式，但保留我们的 agentId
+      if (route.mainSessionKey) {
+        mainSessionKey = route.mainSessionKey;
+      }
+      // sessionKey 需要包含我们的 agentId
+      sessionKey = `wemp:${agentId}:${account.accountId}:${openId}`;
+    } catch (err) {
+      console.warn(`[wemp:${account.accountId}] resolveAgentRoute failed:`, err);
+    }
+  }
+
+  console.log(`[wemp:${account.accountId}] 路由: agentId=${agentId}, sessionKey=${sessionKey}`);
+
+  // 3. 构建消息信封
+  const fromAddress = `wemp:${openId}`;
+
+  // 如果有图片，将 data URL 嵌入消息体（参考 WeCom 的做法）
+  let messageText = text;
+  if (imageDataUrl) {
+    messageText = `[用户发送了一张图片]\n${imageDataUrl}\n\n${text}`;
+  }
+
+  let body = messageText;
+
+  if (formatInboundEnvelope) {
+    try {
+      const envelopeOptions = resolveEnvelopeFormatOptions?.(cfg);
+      body = formatInboundEnvelope({
+        channel: "WEMP",
+        from: openId,
+        timestamp,
+        body: messageText,
+        chatType: "direct",
+        sender: { id: openId },
+        envelope: envelopeOptions,
+      }) ?? messageText;
+    } catch (err) {
+      console.warn(`[wemp:${account.accountId}] formatInboundEnvelope failed:`, err);
+    }
+  }
+
+  // 4. 构建 inbound context
+  let ctx: any = {
+    Body: body,
+    RawBody: messageText,
+    CommandBody: text,
+    From: fromAddress,
+    To: fromAddress,
+    SessionKey: sessionKey,
+    AccountId: account.accountId,
+    ChatType: "direct",
+    ConversationLabel: openId,
+    SenderId: openId,
+    Provider: "wemp",
+    Surface: "wemp",
+    MessageSid: messageId,
+    Timestamp: timestamp,
+    OriginatingChannel: "wemp",
+    OriginatingTo: fromAddress,
+    // 指定 agent ID - 这是关键！
+    AgentId: agentId,
+  };
+
+  // 添加图片附件
+  if (imageDataUrl) {
+    ctx.Attachments = [
+      {
+        type: "image",
+        url: imageDataUrl,
+        contentType: "image/jpeg",
+      },
+    ];
+    ctx.MediaUrls = [imageDataUrl];
+    ctx.NumMedia = "1";
+  }
+
+  // 使用 finalizeInboundContext 处理 context
+  if (finalizeInboundContext) {
+    ctx = finalizeInboundContext(ctx);
+  }
+
+  // 5. 记录会话元数据
+  if (recordSessionMetaFromInbound && resolveStorePath) {
+    try {
+      const storePath = resolveStorePath(cfg.session?.store, { agentId });
+      await recordSessionMetaFromInbound({
+        storePath,
+        sessionKey: ctx.SessionKey ?? sessionKey,
+        ctx,
+      });
+    } catch (err) {
+      console.warn(`[wemp:${account.accountId}] recordSessionMetaFromInbound failed:`, err);
+    }
+  }
+
+  // 6. 更新最后路由
+  if (updateLastRoute && resolveStorePath) {
+    try {
+      const storePath = resolveStorePath(cfg.session?.store, { agentId });
+      await updateLastRoute({
+        storePath,
+        sessionKey: mainSessionKey,
+        deliveryContext: {
+          channel: "wemp",
+          to: openId,
+          accountId: account.accountId,
+        },
+        ctx,
+      });
+    } catch (err) {
+      console.warn(`[wemp:${account.accountId}] updateLastRoute failed:`, err);
+    }
+  }
+
+  // 7. 分发消息并获取回复
+  try {
+    const textLimit = 600; // 微信客服消息限制
+
+    const { queuedFinal } = await dispatchReplyWithBufferedBlockDispatcher({
+      ctx,
+      cfg,
+      dispatcherOptions: {
+        deliver: async (payload: any) => {
+          // 发送正在输入状态
+          sendTypingStatus(account, openId).catch(() => {});
+
+          // 处理文本回复
+          let replyText = payload.text || payload.content || "";
+
+          // 从文本中提取图片 URL
+          const { text: processedText, imageUrls: extractedImageUrls } = processImagesInText(replyText);
+          replyText = processedText;
+
+          if (replyText) {
+            // 使用 chunkMarkdownText 分块发送长文本
+            let chunks: string[];
+            if (chunkMarkdownText) {
+              try {
+                chunks = chunkMarkdownText(replyText, textLimit);
+              } catch {
+                chunks = [replyText];
+              }
+            } else {
+              // 简单分块
+              chunks = [];
+              let remaining = replyText;
+              while (remaining.length > 0) {
+                chunks.push(remaining.slice(0, textLimit));
+                remaining = remaining.slice(textLimit);
+              }
+            }
+
+            // 发送每个分块
+            for (const chunk of chunks) {
+              if (chunk.trim()) {
+                await sendCustomMessage(account, openId, chunk);
+              }
+            }
+          }
+
+          // 合并 payload 中的媒体 URL 和从文本中提取的图片 URL
+          const payloadMediaUrls = payload.mediaUrls ?? (payload.mediaUrl ? [payload.mediaUrl] : []);
+          const allImageUrls = [...payloadMediaUrls, ...extractedImageUrls];
+
+          // 发送图片（最多 10 张）
+          for (const imageUrl of allImageUrls.slice(0, 10)) {
+            if (imageUrl) {
+              try {
+                const result = await sendImageByUrl(account, openId, imageUrl);
+                if (!result.success) {
+                  console.warn(`[wemp:${account.accountId}] 发送图片失败: ${result.error}`);
+                }
+              } catch (err) {
+                console.warn(`[wemp:${account.accountId}] 发送图片异常: ${err}`);
+              }
+            }
+          }
+
+          // 记录出站活动
+          try {
+            recordChannelActivity?.({
+              channel: "wemp",
+              accountId: account.accountId,
+              direction: "outbound",
+            });
+          } catch {}
+        },
+        onError: (err: any, info: any) => {
+          console.error(`[wemp:${account.accountId}] ${info?.kind || "reply"} 失败:`, err);
+        },
+      },
+      replyOptions: {},
+    });
+
+    if (!queuedFinal) {
+      console.log(`[wemp:${account.accountId}] 没有生成回复`);
+    }
+  } catch (err) {
+    console.error(`[wemp:${account.accountId}] 消息分发失败:`, err);
+    // 发送错误消息
+    await sendCustomMessage(account, openId, "抱歉，处理消息时出现错误，请稍后再试。");
   }
 }
 

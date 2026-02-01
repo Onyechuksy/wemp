@@ -5,13 +5,18 @@ import type { ChannelPlugin } from "openclaw/plugin-sdk";
 import type { ResolvedWechatMpAccount, WechatMpChannelConfig } from "./types.js";
 import { listWechatMpAccountIds, resolveWechatMpAccount, applyWechatMpAccountConfig } from "./config.js";
 import { sendText } from "./outbound.js";
-import { registerWechatMpWebhookTarget, initPairingConfig } from "./webhook-handler.js";
+import { registerWechatMpWebhookTarget, initPairingConfig, setStoredConfig } from "./webhook-handler.js";
 import { wechatMpOnboardingAdapter } from "./onboarding.js";
-import { getAccessToken } from "./api.js";
+import { getAccessToken, sendCustomMessage } from "./api.js";
+import { verifyPairingCode } from "./pairing.js";
 
 const DEFAULT_ACCOUNT_ID = "default";
 
-export const wechatMpPlugin: ChannelPlugin<ResolvedWechatMpAccount> = {
+// 配对成功消息
+const PAIRING_APPROVED_MESSAGE = "🎉 配对成功！你现在可以使用完整的 AI 助手功能了。";
+
+// 使用 any 扩展类型以支持 pairing 属性
+export const wechatMpPlugin: ChannelPlugin<ResolvedWechatMpAccount> & { pairing?: any } = {
   id: "wemp",
   meta: {
     id: "wemp",
@@ -20,6 +25,29 @@ export const wechatMpPlugin: ChannelPlugin<ResolvedWechatMpAccount> = {
     docsPath: "/docs/channels/wemp",
     blurb: "通过服务号客服消息接口连接微信",
     order: 60,
+  },
+  // 配对支持 - 让 OpenClaw CLI 能够识别 wemp 渠道
+  pairing: {
+    idLabel: "wempOpenId",
+    normalizeAllowEntry: (entry: string) => entry.replace(/^wemp:/i, ""),
+    notifyApproval: async ({ cfg, id }: { cfg: any; id: string }) => {
+      // id 是配对码，需要验证并获取 openId
+      const account = resolveWechatMpAccount(cfg, DEFAULT_ACCOUNT_ID);
+      if (!account?.appId) {
+        throw new Error("wemp not configured");
+      }
+
+      // 尝试验证配对码（如果 id 是配对码）
+      // 注意：这里的 id 可能是 openId 或配对码
+      if (/^\d{6}$/.test(id)) {
+        // 这是配对码，配对逻辑在 /wemp/api/pair 端点处理
+        console.log(`[wemp] 收到配对请求，配对码: ${id}`);
+        return;
+      }
+
+      // 如果是 openId，直接发送通知
+      await sendCustomMessage(account, id, PAIRING_APPROVED_MESSAGE);
+    },
   },
   capabilities: {
     chatTypes: ["direct"],
@@ -96,6 +124,9 @@ export const wechatMpPlugin: ChannelPlugin<ResolvedWechatMpAccount> = {
       if (channelCfg) {
         initPairingConfig(channelCfg);
       }
+
+      // 存储配置引用
+      setStoredConfig(cfg);
 
       // 验证配置
       if (!account.appId || !account.appSecret || !account.token) {

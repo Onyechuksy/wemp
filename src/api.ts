@@ -6,6 +6,9 @@ import type { ResolvedWechatMpAccount } from "./types.js";
 // Access Token 缓存
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
+// Media ID 缓存 (临时素材有效期 3 天)
+const mediaCache = new Map<string, { mediaId: string; expiresAt: number }>();
+
 /**
  * 获取 Access Token
  */
@@ -71,6 +74,214 @@ export async function sendCustomMessage(
 }
 
 /**
+ * 上传临时素材（图片）
+ * 返回 media_id，有效期 3 天
+ * 支持 HTTP URL、data URL、本地文件路径
+ */
+export async function uploadTempMedia(
+  account: ResolvedWechatMpAccount,
+  imageSource: string,
+  type: "image" | "voice" | "video" | "thumb" = "image"
+): Promise<{ success: boolean; mediaId?: string; error?: string }> {
+  try {
+    // 检查缓存（对于 data URL 使用前 100 字符作为 key）
+    const cacheKey = `${account.accountId}:${type}:${imageSource.slice(0, 100)}`;
+    const cached = mediaCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      return { success: true, mediaId: cached.mediaId };
+    }
+
+    let imageBuffer: ArrayBuffer;
+    let contentType = "image/jpeg";
+
+    // 处理不同类型的图片来源
+    if (imageSource.startsWith("data:")) {
+      // data URL 格式: data:image/png;base64,xxxxx
+      const matches = imageSource.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) {
+        return { success: false, error: "无效的 data URL 格式" };
+      }
+      contentType = matches[1];
+      const base64Data = matches[2];
+      imageBuffer = Buffer.from(base64Data, "base64").buffer;
+    } else if (imageSource.startsWith("/") || imageSource.match(/^[A-Za-z]:\\/)) {
+      // 本地文件路径
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+      try {
+        const fileBuffer = await fs.readFile(imageSource);
+        imageBuffer = fileBuffer.buffer;
+        // 根据扩展名推断 content type
+        const ext = path.extname(imageSource).toLowerCase();
+        if (ext === ".png") contentType = "image/png";
+        else if (ext === ".gif") contentType = "image/gif";
+        else if (ext === ".webp") contentType = "image/webp";
+        else contentType = "image/jpeg";
+      } catch (err) {
+        return { success: false, error: `读取本地文件失败: ${err}` };
+      }
+    } else {
+      // HTTP/HTTPS URL
+      const imageResponse = await fetch(imageSource);
+      if (!imageResponse.ok) {
+        return { success: false, error: `下载图片失败: ${imageResponse.status}` };
+      }
+      imageBuffer = await imageResponse.arrayBuffer();
+      contentType = imageResponse.headers.get("content-type") || "image/jpeg";
+    }
+
+    // 确定文件扩展名
+    let ext = "jpg";
+    if (contentType.includes("png")) ext = "png";
+    else if (contentType.includes("gif")) ext = "gif";
+
+    // 上传到微信
+    const accessToken = await getAccessToken(account);
+    const url = `https://api.weixin.qq.com/cgi-bin/media/upload?access_token=${accessToken}&type=${type}`;
+
+    // 构建 multipart/form-data
+    const boundary = "----WebKitFormBoundary" + Math.random().toString(36).slice(2);
+    const filename = `image.${ext}`;
+
+    const bodyParts: Uint8Array[] = [];
+
+    // 添加文件字段
+    const header = `--${boundary}\r\nContent-Disposition: form-data; name="media"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`;
+    bodyParts.push(new TextEncoder().encode(header));
+    bodyParts.push(new Uint8Array(imageBuffer));
+    bodyParts.push(new TextEncoder().encode(`\r\n--${boundary}--\r\n`));
+
+    // 合并所有部分
+    const totalLength = bodyParts.reduce((sum, part) => sum + part.length, 0);
+    const body = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const part of bodyParts) {
+      body.set(part, offset);
+      offset += part.length;
+    }
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      },
+      body,
+    });
+
+    const data = await response.json() as { media_id?: string; errcode?: number; errmsg?: string };
+
+    if (data.errcode && data.errcode !== 0) {
+      return { success: false, error: `上传失败: ${data.errcode} - ${data.errmsg}` };
+    }
+
+    const mediaId = data.media_id!;
+
+    // 缓存 media_id (有效期 3 天，提前 1 小时过期)
+    mediaCache.set(cacheKey, {
+      mediaId,
+      expiresAt: Date.now() + (3 * 24 * 60 * 60 * 1000) - (60 * 60 * 1000),
+    });
+
+    return { success: true, mediaId };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * 发送客服消息（图片）
+ */
+export async function sendImageMessage(
+  account: ResolvedWechatMpAccount,
+  openId: string,
+  mediaId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const accessToken = await getAccessToken(account);
+    const url = `https://api.weixin.qq.com/cgi-bin/message/custom/send?access_token=${accessToken}`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        touser: openId,
+        msgtype: "image",
+        image: { media_id: mediaId },
+      }),
+    });
+
+    const data = await response.json() as { errcode?: number; errmsg?: string };
+
+    if (data.errcode && data.errcode !== 0) {
+      return { success: false, error: `${data.errcode} - ${data.errmsg}` };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * 发送客服消息（图片，通过 URL）
+ * 自动上传并发送
+ */
+export async function sendImageByUrl(
+  account: ResolvedWechatMpAccount,
+  openId: string,
+  imageUrl: string
+): Promise<{ success: boolean; error?: string }> {
+  // 先上传获取 media_id
+  const uploadResult = await uploadTempMedia(account, imageUrl, "image");
+  if (!uploadResult.success || !uploadResult.mediaId) {
+    return { success: false, error: uploadResult.error || "上传图片失败" };
+  }
+
+  // 发送图片消息
+  return sendImageMessage(account, openId, uploadResult.mediaId);
+}
+
+/**
+ * 发送客服消息（图文消息）
+ * 注意：图文消息需要先创建永久素材，这里使用外链图文
+ */
+export async function sendNewsMessage(
+  account: ResolvedWechatMpAccount,
+  openId: string,
+  articles: Array<{
+    title: string;
+    description: string;
+    url: string;
+    picurl?: string;
+  }>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const accessToken = await getAccessToken(account);
+    const url = `https://api.weixin.qq.com/cgi-bin/message/custom/send?access_token=${accessToken}`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        touser: openId,
+        msgtype: "news",
+        news: { articles },
+      }),
+    });
+
+    const data = await response.json() as { errcode?: number; errmsg?: string };
+
+    if (data.errcode && data.errcode !== 0) {
+      return { success: false, error: `${data.errcode} - ${data.errmsg}` };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
+/**
  * 发送「正在输入」状态
  */
 export async function sendTypingStatus(
@@ -94,5 +305,28 @@ export async function sendTypingStatus(
     return data.errcode === 0;
   } catch {
     return false;
+  }
+}
+
+/**
+ * 下载图片并转换为 data URL
+ */
+export async function downloadImageAsDataUrl(
+  imageUrl: string
+): Promise<{ success: boolean; dataUrl?: string; error?: string }> {
+  try {
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      return { success: false, error: `下载图片失败: ${response.status}` };
+    }
+
+    const buffer = await response.arrayBuffer();
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    const base64 = Buffer.from(buffer).toString("base64");
+    const dataUrl = `data:${contentType};base64,${base64}`;
+
+    return { success: true, dataUrl };
+  } catch (error) {
+    return { success: false, error: String(error) };
   }
 }

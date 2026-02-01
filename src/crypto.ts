@@ -75,7 +75,7 @@ export function extractEncrypt(xml: string): string | null {
  */
 export function parseXmlMessage(xml: string): WechatMpMessage {
   const getValue = (tag: string): string => {
-    const cdataMatch = xml.match(new RegExp(`<${tag}><![CDATA[([\\s\\S]*?)]]></${tag}>`));
+    const cdataMatch = xml.match(new RegExp(`<${tag}><!\\[CDATA\\[([\\s\\S]*?)\\]\\]></${tag}>`));
     if (cdataMatch) return cdataMatch[1];
 
     const plainMatch = xml.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
