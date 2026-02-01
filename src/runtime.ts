@@ -1,14 +1,14 @@
 /**
  * 运行时上下文
  */
-import type { ClawdbotRuntime } from "clawdbot/plugin-sdk";
+import type { OpenclawRuntime } from "openclaw/plugin-sdk";
 
-let runtime: ClawdbotRuntime | null = null;
+let runtime: OpenclawRuntime | null = null;
 
-export function setWechatMpRuntime(r: ClawdbotRuntime) {
+export function setWechatMpRuntime(r: OpenclawRuntime) {
   runtime = r;
 }
 
-export function getWechatMpRuntime(): ClawdbotRuntime | null {
+export function getWechatMpRuntime(): OpenclawRuntime | null {
   return runtime;
 }

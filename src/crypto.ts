@@ -56,7 +56,7 @@ export function decryptMessage(encodingAESKey: string, appId: string, encrypt: s
 
   // 验证 AppID
   if (extractedAppId !== appId) {
-    console.warn(`[wechat-mp] AppID 不匹配: ${extractedAppId} !== ${appId}`);
+    console.warn(`[wemp] AppID 不匹配: ${extractedAppId} !== ${appId}`);
   }
 
   return msg;

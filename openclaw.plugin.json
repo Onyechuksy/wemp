@@ -1,6 +1,6 @@
 {
-  "id": "wechat-mp",
-  "channels": ["wechat-mp"],
+  "id": "wemp",
+  "channels": ["wemp"],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

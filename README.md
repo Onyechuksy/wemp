@@ -1,8 +1,8 @@
-# 微信公众号渠道插件
+# 微信公众号渠道插件 (wemp)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-微信公众号 (WeChat Official Account) 的 Clawdbot 渠道插件，支持接收和回复公众号消息。
+微信公众号 (WeChat Official Account) 渠道插件，支持接收和回复公众号消息。
 
 ## 功能特性
 
@@ -21,38 +21,38 @@
 
 ```bash
 # 进入 extensions 目录
-cd ~/.clawdbot/extensions
+cd ~/.openclaw/extensions
 
 # 克隆项目
-git clone https://github.com/IanShaw027/wechat-mp-clawdbot.git wechat-mp
+git clone https://github.com/IanShaw027/wemp.git wemp
 
 # 安装依赖并编译
-cd wechat-mp
+cd wemp
 npm install
 npm run build
 
 # 重启 Gateway 以加载插件
-clawdbot gateway restart
+openclaw gateway restart
 ```
 
 ### 方式二：使用 plugins install
 
 ```bash
 # 从本地路径安装
-clawdbot plugins install /path/to/wechat-mp
+openclaw plugins install /path/to/wemp
 
 # 或者链接本地开发目录
-clawdbot plugins install --link /path/to/wechat-mp
+openclaw plugins install --link /path/to/wemp
 ```
 
 ### 验证安装
 
 ```bash
 # 查看已加载的插件
-clawdbot plugins list
+openclaw plugins list
 
 # 应该能看到：
-# │ 微信公众号 │ wechat-mp │ loaded │ ...
+# │ 微信公众号 │ wemp │ loaded │ ...
 ```
 
 ## 配置
@@ -60,8 +60,8 @@ clawdbot plugins list
 ### 方式一：交互式配置（推荐）
 
 ```bash
-clawdbot configure --section channels
-# 选择 wechat-mp，按提示输入配置
+openclaw configure --section channels
+# 选择 wemp，按提示输入配置
 ```
 
 ### 方式二：环境变量
@@ -73,23 +73,23 @@ export WECHAT_MP_TOKEN=your_token
 export WECHAT_MP_ENCODING_AES_KEY=your_aes_key  # 可选，安全模式需要
 
 # 然后运行交互式配置，会自动检测环境变量
-clawdbot configure --section channels
+openclaw configure --section channels
 ```
 
 ### 方式三：手动编辑配置
 
-编辑 `~/.clawdbot/clawdbot.json`：
+编辑 `~/.openclaw/openclaw.json`：
 
 ```json
 {
   "channels": {
-    "wechat-mp": {
+    "wemp": {
       "enabled": true,
       "appId": "wx1234567890abcdef",
       "appSecret": "your_app_secret",
       "token": "your_token",
       "encodingAESKey": "your_aes_key",
-      "webhookPath": "/wechat-mp/webhook"
+      "webhookPath": "/wemp"
     }
   }
 }
@@ -98,7 +98,7 @@ clawdbot configure --section channels
 配置完成后重启 Gateway：
 
 ```bash
-clawdbot gateway restart
+openclaw gateway restart
 ```
 
 ## 微信公众号后台配置
@@ -106,7 +106,7 @@ clawdbot gateway restart
 1. 登录 [微信公众平台](https://mp.weixin.qq.com)
 2. 「设置与开发」→「基本配置」→「服务器配置」
 3. 配置：
-   - **URL**: `https://YOUR_DOMAIN/wechat-mp/webhook`（必须是 HTTPS）
+   - **URL**: `https://YOUR_DOMAIN/wemp`（必须是 HTTPS）
    - **Token**: 与配置中的 `token` 一致
    - **EncodingAESKey**: 随机生成（可选，安全模式需要）
    - **消息加解密方式**: 明文模式 / 安全模式
@@ -125,7 +125,7 @@ server {
     ssl_certificate /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
 
-    location /wechat-mp/ {
+    location /wemp {
         proxy_pass http://127.0.0.1:18789;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -146,7 +146,7 @@ server {
 | `encodingAESKey` | string | 否 | 消息加解密密钥（安全模式需要） |
 | `enabled` | boolean | 否 | 是否启用，默认 `true` |
 | `name` | string | 否 | 账户显示名称 |
-| `webhookPath` | string | 否 | Webhook 路径，默认 `/wechat-mp/webhook` |
+| `webhookPath` | string | 否 | Webhook 路径，默认 `/wemp` |
 
 ## 使用
 
@@ -154,47 +154,23 @@ server {
 
 ```bash
 # 后台启动
-clawdbot gateway restart
+openclaw gateway restart
 
 # 前台启动（查看日志）
-clawdbot gateway --port 18789 --verbose
+openclaw gateway --port 18789 --verbose
 ```
 
 ### 验证
 
 ```bash
 # 检查状态
-clawdbot channels status
+openclaw status
 
 # 应该能看到：
-# - 微信公众号 default: enabled, configured, running, connected
+# │ 微信公众号 │ ON │ OK │ ...
 
 # 查看日志
-clawdbot channels logs --channel wechat-mp
-```
-
-## 多账户支持
-
-```json
-{
-  "channels": {
-    "wechat-mp": {
-      "enabled": true,
-      "appId": "默认账户 AppID",
-      "appSecret": "默认账户 AppSecret",
-      "token": "默认账户 Token",
-      "accounts": {
-        "account2": {
-          "enabled": true,
-          "appId": "第二个账户 AppID",
-          "appSecret": "第二个账户 AppSecret",
-          "token": "第二个账户 Token",
-          "webhookPath": "/wechat-mp/webhook/account2"
-        }
-      }
-    }
-  }
-}
+openclaw logs --limit 100
 ```
 
 ## 注意事项
@@ -211,7 +187,7 @@ clawdbot channels logs --channel wechat-mp
 1. 检查服务器配置 URL 是否正确（必须是 HTTPS）
 2. 检查 Token 是否与公众号后台一致
 3. 检查 IP 白名单是否包含服务器 IP
-4. 查看日志：`clawdbot channels logs --channel wechat-mp`
+4. 查看日志：`openclaw logs --limit 100`
 
 ### Q: 能收到消息但无法回复？
 
@@ -241,7 +217,7 @@ npm run dev
 ## 文件结构
 
 ```
-wechat-mp/
+wemp/
 ├── index.ts              # 入口文件
 ├── src/
 │   ├── api.ts            # 微信 API 封装
@@ -253,7 +229,7 @@ wechat-mp/
 │   ├── runtime.ts        # 运行时状态
 │   ├── types.ts          # 类型定义
 │   └── webhook-handler.ts # Webhook 处理
-├── clawdbot.plugin.json  # 插件元数据
+├── openclaw.plugin.json  # 插件元数据
 ├── package.json
 └── tsconfig.json
 ```
@@ -266,4 +242,3 @@ MIT
 
 - [微信公众平台](https://mp.weixin.qq.com)
 - [微信公众号开发文档](https://developers.weixin.qq.com/doc/offiaccount/Getting_Started/Overview.html)
-- [Clawdbot 文档](https://docs.clawd.bot)

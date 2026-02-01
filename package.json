@@ -1,30 +1,46 @@
 {
-  "name": "wechat-mp",
-  "version": "1.0.0",
-  "description": "微信公众号 channel plugin for Clawdbot",
+  "name": "wemp",
+  "version": "2026.2.1",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "clawdbot": {
-    "extensions": ["./index.ts"]
-  },
-  "moltbot": {
-    "extensions": ["./index.ts"]
-  },
+  "license": "MIT",
+  "description": "微信公众号 channel plugin (服务号客服消息)",
   "openclaw": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ],
+    "channel": {
+      "id": "wemp",
+      "label": "微信公众号",
+      "selectionLabel": "微信公众号 (plugin)",
+      "detailLabel": "微信公众号",
+      "docsPath": "/channels/wemp",
+      "docsLabel": "wemp",
+      "blurb": "通过服务号客服消息接口连接微信公众号。",
+      "aliases": [
+        "wechat",
+        "weixin",
+        "gzh",
+        "公众号",
+        "微信"
+      ],
+      "order": 86
+    },
+    "install": {
+      "npmSpec": "wemp",
+      "localPath": "extensions/wemp",
+      "defaultChoice": "local"
+    }
   },
   "scripts": {
     "build": "tsc || true",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "openclaw": "^2026.1.30"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
-  },
-  "peerDependencies": {
-    "clawdbot": "*",
-    "moltbot": "*",
-    "openclaw": "*"
   }
 }

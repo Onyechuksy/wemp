@@ -10,7 +10,7 @@ import { sendCustomMessage } from "./api.js";
 export async function sendText(opts: {
   to: string;
   text: string;
-  accountId: string;
+  accountId?: string;
   replyToId?: string;
   account: ResolvedWechatMpAccount;
 }): Promise<{ messageId?: string; error?: string }> {
@@ -31,7 +31,7 @@ export async function sendText(opts: {
     }
   }
 
-  return { messageId: `wechat-mp-${Date.now()}` };
+  return { messageId: `wemp-${Date.now()}` };
 }
 
 /**

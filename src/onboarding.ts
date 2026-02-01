@@ -7,14 +7,14 @@ import type {
   ChannelOnboardingStatusContext,
   ChannelOnboardingConfigureContext,
   ChannelOnboardingResult,
-} from "clawdbot/plugin-sdk";
+} from "openclaw/plugin-sdk";
 import { listWechatMpAccountIds, resolveWechatMpAccount } from "./config.js";
 
 const DEFAULT_ACCOUNT_ID = "default";
 
 interface MoltbotConfig {
   channels?: {
-    "wechat-mp"?: any;
+    "wemp"?: any;
     [key: string]: unknown;
   };
   [key: string]: unknown;
@@ -24,7 +24,7 @@ interface MoltbotConfig {
  * 微信公众号 Onboarding Adapter
  */
 export const wechatMpOnboardingAdapter: ChannelOnboardingAdapter = {
-  channel: "wechat-mp" as any,
+  channel: "wemp" as any,
 
   getStatus: async (ctx: ChannelOnboardingStatusContext): Promise<ChannelOnboardingStatus> => {
     const { cfg } = ctx;
@@ -34,7 +34,7 @@ export const wechatMpOnboardingAdapter: ChannelOnboardingAdapter = {
     });
 
     return {
-      channel: "wechat-mp" as any,
+      channel: "wemp" as any,
       configured,
       statusLines: [`微信公众号: ${configured ? "已配置" : "需要 AppID、AppSecret 和 Token"}`],
       selectionHint: configured ? "已配置" : "支持服务号客服消息",
@@ -46,7 +46,7 @@ export const wechatMpOnboardingAdapter: ChannelOnboardingAdapter = {
     const { cfg, prompter, accountOverrides, shouldPromptAccountIds } = ctx;
     const moltbotCfg = cfg as MoltbotConfig;
 
-    const override = (accountOverrides as Record<string, string>)["wechat-mp"]?.trim();
+    const override = (accountOverrides as Record<string, string>)["wemp"]?.trim();
     let accountId = override ?? DEFAULT_ACCOUNT_ID;
 
     // 是否需要提示选择账户
@@ -109,8 +109,8 @@ export const wechatMpOnboardingAdapter: ChannelOnboardingAdapter = {
           ...next,
           channels: {
             ...next.channels,
-            "wechat-mp": {
-              ...next.channels?.["wechat-mp"],
+            "wemp": {
+              ...next.channels?.["wemp"],
               enabled: true,
             },
           },
@@ -150,8 +150,8 @@ export const wechatMpOnboardingAdapter: ChannelOnboardingAdapter = {
           ...next,
           channels: {
             ...next.channels,
-            "wechat-mp": {
-              ...next.channels?.["wechat-mp"],
+            "wemp": {
+              ...next.channels?.["wemp"],
               ...updates,
             },
           },
@@ -161,13 +161,13 @@ export const wechatMpOnboardingAdapter: ChannelOnboardingAdapter = {
           ...next,
           channels: {
             ...next.channels,
-            "wechat-mp": {
-              ...next.channels?.["wechat-mp"],
+            "wemp": {
+              ...next.channels?.["wemp"],
               enabled: true,
               accounts: {
-                ...next.channels?.["wechat-mp"]?.accounts,
+                ...next.channels?.["wemp"]?.accounts,
                 [accountId]: {
-                  ...next.channels?.["wechat-mp"]?.accounts?.[accountId],
+                  ...next.channels?.["wemp"]?.accounts?.[accountId],
                   ...updates,
                 },
               },
@@ -185,7 +185,7 @@ export const wechatMpOnboardingAdapter: ChannelOnboardingAdapter = {
       ...cfg,
       channels: {
         ...(cfg as MoltbotConfig).channels,
-        "wechat-mp": { ...(cfg as MoltbotConfig).channels?.["wechat-mp"], enabled: false },
+        "wemp": { ...(cfg as MoltbotConfig).channels?.["wemp"], enabled: false },
       },
     }) as any,
 };

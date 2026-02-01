@@ -1,13 +1,13 @@
-import type { ClawdbotPluginApi } from "clawdbot/plugin-sdk";
+import type { OpenclawPluginApi } from "openclaw/plugin-sdk";
 import { wechatMpPlugin } from "./src/channel.js";
 import { setWechatMpRuntime } from "./src/runtime.js";
 import { handleWechatMpWebhookRequest } from "./src/webhook-handler.js";
 
 const plugin = {
-  id: "wechat-mp",
+  id: "wemp",
   name: "微信公众号",
-  description: "微信公众号 channel plugin (服务号客服消息)",
-  register(api: ClawdbotPluginApi) {
+  description: "微信公众号渠道插件 (服务号客服消息)",
+  register(api: OpenclawPluginApi) {
     setWechatMpRuntime(api.runtime);
     api.registerChannel({ plugin: wechatMpPlugin });
     api.registerHttpHandler(handleWechatMpWebhookRequest);

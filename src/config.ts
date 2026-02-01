@@ -5,11 +5,11 @@ import type { WechatMpChannelConfig, WechatMpAccountConfig, ResolvedWechatMpAcco
 import * as fs from "fs";
 
 const DEFAULT_ACCOUNT_ID = "default";
-const DEFAULT_WEBHOOK_PATH = "/wechat-mp";
+const DEFAULT_WEBHOOK_PATH = "/wemp";
 
 interface MoltbotConfig {
   channels?: {
-    "wechat-mp"?: WechatMpChannelConfig;
+    "wemp"?: WechatMpChannelConfig;
     [key: string]: unknown;
   };
   [key: string]: unknown;
@@ -19,7 +19,7 @@ interface MoltbotConfig {
  * 列出所有账户 ID
  */
 export function listWechatMpAccountIds(cfg: MoltbotConfig): string[] {
-  const channelCfg = cfg.channels?.["wechat-mp"];
+  const channelCfg = cfg.channels?.["wemp"];
   if (!channelCfg) return [];
 
   const ids: string[] = [];
@@ -45,18 +45,20 @@ export function listWechatMpAccountIds(cfg: MoltbotConfig): string[] {
  * 解析账户配置
  */
 export function resolveWechatMpAccount(cfg: MoltbotConfig, accountId: string): ResolvedWechatMpAccount {
-  const channelCfg = cfg.channels?.["wechat-mp"] ?? {};
+  const channelCfg = cfg.channels?.["wemp"] ?? {};
   const isDefault = accountId === DEFAULT_ACCOUNT_ID;
 
   let accountCfg: WechatMpAccountConfig;
   if (isDefault) {
+    // 支持两种字段名：encodingAESKey 和 EncodingAESKey
+    const aesKey = channelCfg.encodingAESKey ?? (channelCfg as any).EncodingAESKey;
     accountCfg = {
       enabled: channelCfg.enabled,
       appId: channelCfg.appId,
       appSecret: channelCfg.appSecret,
       appSecretFile: channelCfg.appSecretFile,
       token: channelCfg.token,
-      encodingAESKey: channelCfg.encodingAESKey,
+      encodingAESKey: aesKey,
       name: channelCfg.name,
       webhookPath: channelCfg.webhookPath,
     };
@@ -119,8 +121,8 @@ export function applyWechatMpAccountConfig(
       ...cfg,
       channels: {
         ...cfg.channels,
-        "wechat-mp": {
-          ...cfg.channels?.["wechat-mp"],
+        "wemp": {
+          ...cfg.channels?.["wemp"],
           enabled: true,
           ...updates,
         },
@@ -131,13 +133,13 @@ export function applyWechatMpAccountConfig(
       ...cfg,
       channels: {
         ...cfg.channels,
-        "wechat-mp": {
-          ...cfg.channels?.["wechat-mp"],
+        "wemp": {
+          ...cfg.channels?.["wemp"],
           enabled: true,
           accounts: {
-            ...cfg.channels?.["wechat-mp"]?.accounts,
+            ...cfg.channels?.["wemp"]?.accounts,
             [accountId]: {
-              ...cfg.channels?.["wechat-mp"]?.accounts?.[accountId],
+              ...cfg.channels?.["wemp"]?.accounts?.[accountId],
               enabled: true,
               ...updates,
             },

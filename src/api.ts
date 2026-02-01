@@ -31,7 +31,7 @@ export async function getAccessToken(account: ResolvedWechatMpAccount): Promise<
   const expiresAt = Date.now() + (data.expires_in ?? 7200) * 1000;
 
   tokenCache.set(cacheKey, { token, expiresAt });
-  console.log(`[wechat-mp:${account.accountId}] Access Token 已刷新`);
+  console.log(`[wemp:${account.accountId}] Access Token 已刷新`);
 
   return token;
 }

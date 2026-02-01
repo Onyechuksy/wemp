@@ -1,7 +1,7 @@
 /**
  * 微信公众号 Channel Plugin
  */
-import type { ChannelPlugin } from "clawdbot/plugin-sdk";
+import type { ChannelPlugin } from "openclaw/plugin-sdk";
 import type { ResolvedWechatMpAccount } from "./types.js";
 import { listWechatMpAccountIds, resolveWechatMpAccount, applyWechatMpAccountConfig } from "./config.js";
 import { sendText } from "./outbound.js";
@@ -12,12 +12,12 @@ import { getAccessToken } from "./api.js";
 const DEFAULT_ACCOUNT_ID = "default";
 
 export const wechatMpPlugin: ChannelPlugin<ResolvedWechatMpAccount> = {
-  id: "wechat-mp",
+  id: "wemp",
   meta: {
-    id: "wechat-mp",
+    id: "wemp",
     label: "微信公众号",
     selectionLabel: "微信公众号",
-    docsPath: "/docs/channels/wechat-mp",
+    docsPath: "/docs/channels/wemp",
     blurb: "通过服务号客服消息接口连接微信",
     order: 60,
   },
@@ -27,7 +27,7 @@ export const wechatMpPlugin: ChannelPlugin<ResolvedWechatMpAccount> = {
     reactions: false,
     threads: false,
   },
-  reload: { configPrefixes: ["channels.wechat-mp"] },
+  reload: { configPrefixes: ["channels.wemp"] },
   // CLI onboarding wizard
   onboarding: wechatMpOnboardingAdapter,
   config: {
@@ -76,10 +76,10 @@ export const wechatMpPlugin: ChannelPlugin<ResolvedWechatMpAccount> = {
     deliveryMode: "direct",
     textChunkLimit: 600,
     sendText: async ({ to, text, accountId, replyToId, cfg }) => {
-      const account = resolveWechatMpAccount(cfg, accountId);
-      const result = await sendText({ to, text, accountId, replyToId, account });
+      const account = resolveWechatMpAccount(cfg, accountId ?? DEFAULT_ACCOUNT_ID);
+      const result = await sendText({ to, text, accountId: accountId ?? DEFAULT_ACCOUNT_ID, replyToId, account });
       return {
-        channel: "wechat-mp",
+        channel: "wemp",
         messageId: result.messageId,
         error: result.error ? new Error(result.error) : undefined,
       };
@@ -89,11 +89,11 @@ export const wechatMpPlugin: ChannelPlugin<ResolvedWechatMpAccount> = {
     startAccount: async (ctx) => {
       const { account, abortSignal, log, cfg } = ctx;
 
-      log?.info(`[wechat-mp:${account.accountId}] Starting gateway (Webhook mode)`);
+      log?.info(`[wemp:${account.accountId}] Starting gateway (Webhook mode)`);
 
       // 验证配置
       if (!account.appId || !account.appSecret || !account.token) {
-        log?.error(`[wechat-mp:${account.accountId}] Missing required config (appId, appSecret, token)`);
+        log?.error(`[wemp:${account.accountId}] Missing required config (appId, appSecret, token)`);
         ctx.setStatus({
           ...ctx.getStatus(),
           running: false,
@@ -105,9 +105,9 @@ export const wechatMpPlugin: ChannelPlugin<ResolvedWechatMpAccount> = {
       // 预热 access_token
       try {
         await getAccessToken(account);
-        log?.info(`[wechat-mp:${account.accountId}] Access token obtained`);
+        log?.info(`[wemp:${account.accountId}] Access token obtained`);
       } catch (err) {
-        log?.warn(`[wechat-mp:${account.accountId}] Failed to get access token: ${err}`);
+        log?.warn(`[wemp:${account.accountId}] Failed to get access token: ${err}`);
       }
 
       // 注册 webhook
@@ -118,7 +118,7 @@ export const wechatMpPlugin: ChannelPlugin<ResolvedWechatMpAccount> = {
         cfg,
       });
 
-      log?.info(`[wechat-mp:${account.accountId}] Webhook registered at ${webhookPath}`);
+      log?.info(`[wemp:${account.accountId}] Webhook registered at ${webhookPath}`);
       ctx.setStatus({
         ...ctx.getStatus(),
         running: true,
@@ -129,7 +129,7 @@ export const wechatMpPlugin: ChannelPlugin<ResolvedWechatMpAccount> = {
       // 等待 abort 信号
       return new Promise<void>((resolve) => {
         abortSignal.addEventListener("abort", () => {
-          log?.info(`[wechat-mp:${account.accountId}] Unregistering webhook...`);
+          log?.info(`[wemp:${account.accountId}] Unregistering webhook...`);
           unregister();
           resolve();
         });
