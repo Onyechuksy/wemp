@@ -39,7 +39,8 @@ function getAgentConfig(accountId: string, agentConfigByAccountId: Map<string, {
 export async function handleSpecialCommand(
   account: ResolvedWechatMpAccount,
   openId: string,
-  content: string
+  content: string,
+  agentConfigByAccountId?: Map<string, { agentPaired: string; agentUnpaired: string }>
 ): Promise<boolean> {
   // 配对命令
   if (content === "配对" || content === "绑定") {
@@ -89,10 +90,11 @@ export async function handleSpecialCommand(
     const user = getPairedUser(account.accountId, openId);
     const mode = paired ? "🔓 完整模式（个人助理）" : "🔒 客服模式";
 
-    // 需要从外部传入 agentConfigByAccountId
-    const DEFAULT_AGENT_PAIRED = process.env.WEMP_AGENT_PAIRED || "main";
-    const DEFAULT_AGENT_UNPAIRED = process.env.WEMP_AGENT_UNPAIRED || "wemp-cs";
-    const agentId = paired ? DEFAULT_AGENT_PAIRED : DEFAULT_AGENT_UNPAIRED;
+    // 使用账户特定的 agent 配置
+    const agentCfg = agentConfigByAccountId
+      ? getAgentConfig(account.accountId, agentConfigByAccountId)
+      : { agentPaired: process.env.WEMP_AGENT_PAIRED || "main", agentUnpaired: process.env.WEMP_AGENT_UNPAIRED || "wemp-cs" };
+    const agentId = paired ? agentCfg.agentPaired : agentCfg.agentUnpaired;
     const aiEnabled = isAiAssistantEnabled(account.accountId, openId);
 
     let statusMsg = `当前状态: ${mode}\n`;
@@ -335,10 +337,13 @@ export async function handleMenuClick(
     // 如果没有配置响应，将原始值作为消息发送给 AI 处理
     const aiEnabled = isAiAssistantEnabled(account.accountId, openId);
     if (!aiEnabled) {
-      console.log(`[wemp:${account.accountId}] 用户 ${openId} 的 AI 助手已关闭，跳过后台菜单文字处理`);
+      console.log(`[wemp:${account.accountId}] 用户 ${openId.slice(0, 8)}... 的 AI 助手已关闭，跳过后台菜单文字处理`);
       const wempCfg = cfg?.channels?.wemp;
       const disabledHint = wempCfg?.aiDisabledHint ?? "AI 助手当前已关闭，请点击菜单「AI助手」->「开启AI助手」来开启。";
-      await sendCustomMessage(account, openId, disabledHint);
+      // 只有当 disabledHint 非空时才发送消息
+      if (disabledHint) {
+        await sendCustomMessage(account, openId, disabledHint);
+      }
       return;
     }
 

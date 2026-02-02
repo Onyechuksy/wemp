@@ -20,6 +20,14 @@ const PAIRING_API_RATE_LIMIT = { windowMs: 60_000, max: 30 };
 function checkPairingApiRateLimit(req: IncomingMessage): { ok: true } | { ok: false; retryAfterSec: number } {
   const ip = req.socket?.remoteAddress || "unknown";
   const now = Date.now();
+
+  // Lazy cleanup: remove expired entries (run occasionally to avoid overhead)
+  if (pairingApiRate.size > 1000) {
+    for (const [key, val] of pairingApiRate) {
+      if (now > val.resetAt) pairingApiRate.delete(key);
+    }
+  }
+
   const current = pairingApiRate.get(ip);
   if (!current || now > current.resetAt) {
     pairingApiRate.set(ip, { count: 1, resetAt: now + PAIRING_API_RATE_LIMIT.windowMs });
@@ -36,12 +44,18 @@ function checkPairingApiRateLimit(req: IncomingMessage): { ok: true } | { ok: fa
 
 /**
  * 时间安全的字符串比较
+ * 避免长度不匹配时的时序泄漏
  */
 function timingSafeEqualString(a: string, b: string): boolean {
   const ba = Buffer.from(String(a));
   const bb = Buffer.from(String(b));
-  if (ba.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ba, bb);
+  // Avoid timing leak on length mismatch by always comparing same-length buffers
+  const maxLen = Math.max(ba.length, bb.length);
+  const paddedA = Buffer.alloc(maxLen);
+  const paddedB = Buffer.alloc(maxLen);
+  ba.copy(paddedA);
+  bb.copy(paddedB);
+  return ba.length === bb.length && crypto.timingSafeEqual(paddedA, paddedB);
 }
 
 /**

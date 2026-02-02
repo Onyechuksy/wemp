@@ -56,7 +56,7 @@ export function enableAiAssistant(accountId: string, openId: string): void {
     };
     return states;
   });
-  console.log(`[wemp:ai-state] 用户 ${openId} 开启了 AI 助手`);
+  console.log(`[wemp:ai-state] 用户 ${openId.slice(0, 8)}... 开启了 AI 助手`);
 }
 
 /**
@@ -71,7 +71,7 @@ export function disableAiAssistant(accountId: string, openId: string): void {
     };
     return states;
   });
-  console.log(`[wemp:ai-state] 用户 ${openId} 关闭了 AI 助手`);
+  console.log(`[wemp:ai-state] 用户 ${openId.slice(0, 8)}... 关闭了 AI 助手`);
 }
 
 /**
