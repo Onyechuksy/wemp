@@ -181,19 +181,67 @@ openclaw configure --section channels
 │  ├─ 开启AI助手
 │  ├─ 关闭AI助手
 │  ├─ 新对话
-│  └─ 清除上下文
+│  ├─ 清除上下文
+│  └─ 使用统计
 └─ 更多
    ├─ 撤销上条
+   ├─ 模型信息
    └─ 使用统计
 ```
 
-**菜单管理命令**（在 Telegram 等渠道使用）：
+### 菜单自动同步
+
+设置 `syncMenu: true` 后，每次 Gateway 重启时会自动同步菜单：
+
+```json
+{
+  "channels": {
+    "wemp": {
+      "syncMenu": true
+    }
+  }
+}
+```
+
+**同步逻辑：**
+- 读取微信后台已有的菜单
+- 自动追加「AI助手」菜单
+- ⚠️ **注意**：微信最多支持 3 个一级菜单，如果后台已有 3 个菜单，**第三个会被「AI助手」替换**
+- 建议在微信后台只保留 **2 个**一级菜单，让插件自动追加 AI 助手
+
+### 菜单管理命令
+
+在 Telegram 等渠道使用：
 
 | 命令 | 说明 |
 |------|------|
-| `/wemp-menu create` | 创建/更新菜单 |
-| `/wemp-menu delete` | 删除菜单 |
-| `/wemp-menu get` | 查看菜单配置 |
+| `/wemp-menu create` | 创建菜单（从配置读取或使用默认） |
+| `/wemp-menu delete` | 删除自定义菜单 |
+| `/wemp-menu get` | 查看当前菜单配置 |
+
+### 完全自定义菜单
+
+如需完全自定义菜单结构，可在配置中指定：
+
+```json
+{
+  "channels": {
+    "wemp": {
+      "menu": {
+        "button": [
+          {
+            "name": "菜单一",
+            "sub_button": [
+              { "type": "click", "name": "按钮1", "key": "KEY_1" },
+              { "type": "view", "name": "链接", "url": "https://example.com" }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
+```
 
 <details>
 <summary><b>完整配置项</b></summary>
